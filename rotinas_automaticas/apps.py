@@ -8,6 +8,43 @@ class RotinasAutomaticasConfig(AppConfig):
     
     def ready(self):
         """Executado quando a aplicação está pronta"""
+        # Verificar se estamos no Heroku
+        is_heroku = os.environ.get('DYNO') is not None
+        
+        if is_heroku:
+            self._inicializar_heroku()
+        else:
+            self._inicializar_local()
+    
+    def _inicializar_heroku(self):
+        """Inicialização específica para ambiente Heroku"""
+        try:
+            # Iniciar em um thread separado para não bloquear o servidor
+            import threading
+            
+            def iniciar_heroku_async():
+                # Dar tempo para o servidor Gunicorn inicializar completamente
+                import time
+                time.sleep(10)
+                
+                from .heroku_scheduler import iniciar_scheduler_heroku, iniciar_monitor_heroku
+                
+                # Inicializar scheduler
+                iniciar_scheduler_heroku()
+                
+                # Iniciar monitor
+                iniciar_monitor_heroku()
+            
+            # Iniciar thread
+            thread = threading.Thread(target=iniciar_heroku_async)
+            thread.daemon = True
+            thread.start()
+            
+        except Exception as e:
+            print(f"❌ Erro na inicialização do Heroku: {e}")
+    
+    def _inicializar_local(self):
+        """Inicialização específica para ambiente local"""
         # Só executar no processo principal do runserver (evitar duplicação)
         if os.environ.get('RUN_MAIN') or 'runserver' not in os.sys.argv:
             return

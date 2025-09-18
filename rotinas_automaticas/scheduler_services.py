@@ -268,7 +268,7 @@ class CargaDiariaService:
             )
         else:
             self.logger.log('WARNING', 'CargaDiaria', 
-                          f"Item já existe na fila para rotina {rotina.nome}, data {data_execucao} e horário {rotina_atualizada.horario_execucao}")
+                          f"Item já existe na fila para rotina {rotina.rotina_definicao.nome_exibicao}, data {data_execucao} e horário {rotina_atualizada.horario_execucao}")
             
             self.logger.log('DEBUG', 'CargaDiaria', 
                           f'Rotina adicionada à fila: {rotina.rotina_definicao.nome_exibicao} às {rotina_atualizada.horario_execucao}')

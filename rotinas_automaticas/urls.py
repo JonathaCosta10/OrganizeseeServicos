@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import heroku_views
 
 urlpatterns = [
     path('api/download_cvm/', views.download_cvm, name='download_cvm'),
@@ -23,4 +24,7 @@ urlpatterns = [
     path('api/scheduler/rotinas/', views.listar_rotinas, name='scheduler_listar_rotinas'),
     path('api/scheduler/rotinas/<int:rotina_id>/', views.gerenciar_rotina, name='scheduler_gerenciar_rotina'),
     path('api/scheduler/rotinas/<int:rotina_id>/executar/', views.executar_rotina_especifica, name='scheduler_executar_rotina'),
+    
+    # Status específico do Heroku
+    path('api/scheduler/heroku/status/', heroku_views.status_scheduler_heroku, name='scheduler_status_heroku'),
 ]
