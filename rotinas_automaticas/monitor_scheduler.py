@@ -69,6 +69,14 @@ class SchedulerMonitor:
             self.thread.join(timeout=5)
         logger.info("🛑 Monitor do scheduler parado")
         
+    def _close_old_connections(self):
+        """Fecha conexões antigas com o banco de dados para evitar problemas"""
+        try:
+            from django.db import close_old_connections
+            close_old_connections()
+        except Exception as e:
+            logger.warning(f"Erro ao fechar conexões antigas: {e}")
+        
     def _agendar_tarefas(self):
         """Agenda tarefas recorrentes"""
         
@@ -93,9 +101,13 @@ class SchedulerMonitor:
     def _run_monitor(self):
         """Loop principal do monitor"""
         ultima_verificacao = datetime.now(BRAZIL_TZ)
+        falhas_consecutivas = 0
         
         while self.running:
             try:
+                # Fechar conexões antigas para evitar problemas
+                self._close_old_connections()
+                
                 # Executar tarefas agendadas
                 schedule.run_pending()
                 
@@ -110,11 +122,27 @@ class SchedulerMonitor:
                     logger.warning(f"⚠️ Atraso de {delta:.1f}s entre verificações do monitor")
                 ultima_verificacao = agora
                 
+                # Resetar contador de falhas quando bem-sucedido
+                if falhas_consecutivas > 0:
+                    logger.info(f"✅ Monitor recuperado após {falhas_consecutivas} falhas consecutivas")
+                    falhas_consecutivas = 0
+                
                 # Sleep mais curto para garantir execução próxima ao horário exato
                 time.sleep(5)  # Verificar a cada 5 segundos para maior precisão
-            except ConnectionError as e:
-                logger.error(f"Erro de conexão no monitor: {e}", exc_info=True)
-                time.sleep(15)  # Aguardar um pouco mais em caso de erro de conexão
+                
+            except (ConnectionError, InterfaceError, OperationalError) as e:
+                falhas_consecutivas += 1
+                logger.error(f"Erro de conexão no monitor: {e} (Falha #{falhas_consecutivas})", exc_info=True)
+                
+                # Aumentar tempo de espera com backoff exponencial limitado
+                wait_time = min(15 * (2 ** (falhas_consecutivas - 1)), 300)  # Máximo 5 minutos
+                logger.info(f"Aguardando {wait_time}s antes de tentar novamente...")
+                time.sleep(wait_time)
+            
+            except Exception as e:
+                # Capturar qualquer outra exceção para garantir que o monitor continue rodando
+                logger.error(f"Erro inesperado no monitor: {e}", exc_info=True)
+                time.sleep(10)  # Aguardar um tempo padrão
             except Exception as e:
                 logger.error(f"Erro no monitor: {e}", exc_info=True)
                 time.sleep(10)  # Aguardar menos tempo para não perder execuções
@@ -152,9 +180,8 @@ class SchedulerMonitor:
     def _executar_scheduler_se_necessario(self):
         """Executa scheduler se houver rotinas pendentes"""
         try:
-            # Close and reopen database connection to avoid "connection already closed"
-            from django.db import connection
-            connection.close()
+            # Fechar conexões antigas antes de iniciar novas consultas
+            self._close_old_connections()
             
             inicio_verificacao = datetime.now(BRAZIL_TZ)
             
@@ -240,9 +267,8 @@ class SchedulerMonitor:
     def _verificar_execucoes_imediatas(self):
         """Verifica e executa rotinas do minuto atual para maior precisão"""
         try:
-            # Close and reopen database connection to avoid "connection already closed"
-            from django.db import connection
-            connection.close()
+            # Fechar conexões antigas antes de iniciar novas consultas
+            self._close_old_connections()
             
             # Importar modelos
             from rotinas_automaticas.models import FilaExecucao
