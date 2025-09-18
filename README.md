@@ -1,32 +1,46 @@
 # Serviços - Rotinas Automáticas
 
-Este é um projeto Django REST Framework para execução de rotinas automáticas de download.
+![GitHub last commit](https://img.shields.io/github/last-commit/Organizesee/ProdService)
+![Python](https://img.shields.io/badge/python-3.11-blue)
+![Django](https://img.shields.io/badge/django-5.2-green)
 
-## Configuração do Projeto
+Sistema de rotinas automatizadas para download e processamento de dados financeiros. Esta API REST gerencia o download automático de arquivos da CVM e B3, além de fornecer uma estrutura robusta para agendamento de rotinas automatizadas.
+
+## 💻 Tecnologias
+
+- **Backend**: Django 5.2.6, Django REST Framework 3.16.1
+- **Banco de Dados**: PostgreSQL
+- **Deployment**: Heroku
+- **Automação**: Sistema de scheduler integrado
+- **CORS**: Suporte completo para aplicações frontend
+
+## 📋 Configuração do Projeto
 
 ### Estrutura
-- **Projeto:** servicos
-- **Aplicativo:** rotinas_automaticas
-- **Banco de dados:** PostgreSQL (configurado)
+- **Projeto**: servicos
+- **Aplicativo**: rotinas_automaticas
+- **Banco de dados**: PostgreSQL (configurado)
 
-### Dependências
+### Dependências Principais
 - Django 5.2.6
 - Django REST Framework 3.16.1
 - psycopg2-binary (para PostgreSQL)
 - python-dotenv
 - requests (para downloads HTTP)
 - django-cors-headers (para CORS)
+- gunicorn (para produção)
+- whitenoise (para arquivos estáticos em produção)
 
 ### Configurações CORS
-- **Origem permitida:** `http://localhost:3000` e `http://127.0.0.1:3000`
+- **Origens permitidas:** `http://localhost:3000`, `http://127.0.0.1:3000`, `https://organizesee.github.io`
 - **Métodos permitidos:** GET, POST, PUT, PATCH, DELETE, OPTIONS
 - **Headers permitidos:** Todos os headers necessários
 - **Credenciais:** Habilitadas
 
-## Endpoints Disponíveis
+## 🌐 Endpoints Disponíveis
 
 ### 1. Download CVM
-- **URL:** `http://127.0.0.1:8000/api/download_cvm/`
+- **URL:** `/api/download_cvm/`
 - **Métodos:** GET, POST
 - **Descrição:** Executa o script de download da CVM, baixa e extrai arquivos ZIP
 - **Pasta destino:** `static/downloadbruto/`
@@ -41,7 +55,7 @@ Este é um projeto Django REST Framework para execução de rotinas automáticas
   - Mantém TODOS os arquivos CSV extraídos (sem exclusões)
 
 ### 2. Download B3
-- **URL:** `http://127.0.0.1:8000/api/download_b3/`
+- **URL:** `/api/download_b3/`
 - **Métodos:** GET, POST
 - **Descrição:** Executa o script de download da B3, baixa arquivos de múltiplos dias úteis
 - **Pasta destino:** `static/downloadbruto/`
@@ -61,29 +75,79 @@ Este é um projeto Django REST Framework para execução de rotinas automáticas
 - `GET /api/download_b3/?dias=5` - Baixa 5 dias úteis
 - `POST /api/download_b3/` com `{"dias": 2}` - Baixa 2 dias úteis
 
-## Como Executar
+## 🚀 Como Executar
 
-### 1. Ativar o ambiente virtual
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
+### Localmente
 
-### 2. Executar o servidor
-```powershell
-python manage.py runserver 8000
-```
+1. **Clonar o repositório**
+   ```bash
+   git clone https://github.com/Organizesee/ProdService.git
+   cd ProdService
+   ```
 
-### 3. Testar os endpoints
-Acesse no navegador ou use um cliente HTTP como Postman:
-- `http://127.0.0.1:8000/api/download_cvm/`
-- `http://127.0.0.1:8000/api/download_b3/`
+2. **Criar e ativar ambiente virtual**
+   ```bash
+   # Windows
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   
+   # Linux/Mac
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
 
-## Estrutura de Pastas
+3. **Instalar dependências**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **Configurar variáveis de ambiente**
+   Copie o arquivo `.env.example` para `.env` e ajuste as configurações conforme necessário.
+
+5. **Executar migrações**
+   ```bash
+   python manage.py migrate
+   ```
+
+6. **Iniciar o servidor**
+   ```bash
+   python manage.py runserver
+   ```
+
+### Deploy no Heroku
+
+1. **Criar aplicação no Heroku**
+   ```bash
+   heroku create nome-da-aplicacao
+   ```
+
+2. **Configurar variáveis de ambiente**
+   ```bash
+   heroku config:set SECRET_KEY=sua-chave-secreta
+   heroku config:set DEBUG=False
+   ```
+
+3. **Adicionar banco de dados**
+   ```bash
+   heroku addons:create heroku-postgresql:mini
+   ```
+
+4. **Deploy da aplicação**
+   ```bash
+   git push heroku main
+   ```
+
+5. **Executar migrações**
+   ```bash
+   heroku run python manage.py migrate
+   ```
+
+## 📁 Estrutura de Pastas
 
 ```
 servicos_organizesee/
 ├── .venv/                      # Ambiente virtual
-├── static/
+├── static/                     # Arquivos estáticos
 │   └── downloadbruto/          # Arquivos de download gerados
 ├── servicos/                   # Configurações do projeto
 │   ├── settings.py
@@ -93,11 +157,14 @@ servicos_organizesee/
 │   ├── views.py
 │   ├── urls.py
 │   └── ...
+├── Procfile                    # Configuração para Heroku
+├── requirements.txt            # Dependências do projeto
+├── runtime.txt                 # Versão do Python
 ├── manage.py
 └── README.md
 ```
 
-## Banco de Dados
+## 📄 Banco de Dados
 
 O projeto está configurado para usar PostgreSQL com as seguintes configurações:
 - **Engine:** postgresql
@@ -106,16 +173,7 @@ O projeto está configurado para usar PostgreSQL com as seguintes configuraçõe
 - **Port:** 5432
 - **User:** u71lo0hl2prk2v
 
-## Funcionalidades
-
-- ✅ Projeto Django REST Framework configurado
-- ✅ Aplicativo rotinas_automaticas criado
-- ✅ Banco PostgreSQL configurado
-- ✅ Endpoints de download CVM e B3 funcionais
-- ✅ Geração automática de arquivos na pasta static/downloadbruto
-- ✅ Resposta JSON com status da operação
-
-## Resposta dos Endpoints
+## 📊 Resposta dos Endpoints
 
 ### Endpoint CVM
 Os endpoints retornam uma resposta JSON no formato:
@@ -158,7 +216,7 @@ Os endpoints retornam uma resposta JSON no formato:
 }
 ```
 
-## Arquivos Baixados da CVM
+## 📂 Arquivos Baixados da CVM
 
 ### Dados de Ações (FCA)
 - `fca_cia_aberta_2025.csv` - Dados principais das companhias
@@ -192,7 +250,7 @@ Os endpoints retornam uma resposta JSON no formato:
 - `inf_mensal_fii_ativo_passivo_2025.csv` - Ativo e passivo
 - `inf_mensal_fii_complemento_2025.csv` - Informações complementares mensais
 
-## Arquivos Baixados da B3
+## 📊 Arquivos Baixados da B3
 
 ### Dados Diários de Mercado
 **Por dia útil solicitado:**
@@ -212,11 +270,26 @@ Os endpoints retornam uma resposta JSON no formato:
 - **Exemplo:** Se hoje for segunda e solicitar 3 dias, buscará: sexta anterior, hoje (segunda) e amanhã (terça)
 - **Limite:** Máximo 10 dias úteis por requisição
 
-## Desenvolvimento
+## 🔄 Sistema de Rotinas Automatizadas
+
+O sistema possui um módulo avançado de agendamento e execução de rotinas automatizadas:
+
+- **Agendamento**: Rotinas programáveis por dia, hora e minuto
+- **Monitoramento**: Verificação de saúde e correção automática
+- **Logging**: Sistema completo de registro de execuções
+- **Reinicialização**: Renovação diária automática às 00:01
+
+## 🛠️ Desenvolvimento
 
 Para adicionar novos scripts de download:
 1. Crie uma nova view em `rotinas_automaticas/views.py`
 2. Adicione a URL correspondente em `rotinas_automaticas/urls.py`
 3. Implemente a lógica de download e geração de arquivo
-#   P r o d S e r v i c e  
- 
+
+## 📜 Licença
+
+Este projeto é licenciado sob a licença MIT.
+
+---
+
+Desenvolvido por [Organizesee](https://github.com/Organizesee)

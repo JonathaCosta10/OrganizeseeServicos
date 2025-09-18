@@ -1,0 +1,411 @@
+"""
+Sistema de Monitoramento e Renovação Diária do Scheduler
+===============================        # Agendar tarefas recorrentes
+        
+        # Renovação diária às 00:01
+        schedule.every().day.at("00:01").do(self._renovar_carga_diaria)
+        
+        # Execução do scheduler a cada minuto para mais precisão
+        schedule.every(1).minutes.do(self._executar_scheduler_se_necessario)
+        
+        # Verificação específica de rotinas do minuto atual para maior precisão
+        schedule.every(10).seconds.do(self._verificar_execucoes_imediatas)
+        
+        # Verificação de saúde a cada hora
+        schedule.every().hour.do(self._verificar_saude_sistema)
+        
+        logger.info("📅 Tarefas agendadas:")
+        logger.info("   - Renovação diária: 00:01")
+        logger.info("   - Scheduler: a cada minuto")
+        logger.info("   - Verificações precisas: a cada 10 segundos")
+        logger.info("   - Verificação de saúde: a cada hora")==========
+
+Pro            # Verificar se há rotinas pendentes para executar
+            pendentes = FilaExecucao.objects.filter(
+                status='PENDENTE',
+                data_execucao__lte=agora.date(),
+                horario_execucao__lte=agora.time()
+            )
+            
+            # Listar detalhes das rotinas pendentes
+            if pendentes.exists():
+                for item in pendentes:
+                    nome_rotina = item.scheduler_rotina.rotina_definicao.nome_exibicao
+                    logger.info(f"📋 Rotina pendente: {nome_rotina} - Horário: {item.horario_execucao} (atual: {agora.time()})")
+            
+            total_pendentes = pendentes.count()
+            if total_pendentes > 0:
+                logger.info(f"🚀 Executando scheduler - {total_pendentes} rotina(s) pendente(s)")
+                
+                # Executar scheduler
+                from rotinas_automaticas.scheduler_services import SchedulerService
+                
+                scheduler = SchedulerService()
+                resultado = scheduler.executor.executar_fila(limite_execucoes=10)
+                
+                self.ultima_execucao_scheduler = agora
+                
+                logger.info(f"✅ Scheduler executado - {resultado['total_executadas']} rotinas processadas")ackground para:
+- Monitorar execução das rotinas
+- Renovar carga diária às 00:01
+- Executar scheduler automaticamente
+- Garantir continuidade do sistema
+
+Autor: Sistema Automatizado
+Data: 16/09/2025
+"""
+
+import os
+import sys
+import time
+import threading
+import schedule
+from datetime import datetime, timedelta
+import pytz
+import logging
+from django.core.management import call_command
+from django.conf import settings
+
+# Configurar timezone
+BRAZIL_TZ = pytz.timezone('America/Sao_Paulo')
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger('scheduler_monitor')
+
+# Aumentar nível de log para DEBUG durante desenvolvimento
+logger.setLevel(logging.DEBUG)
+
+class SchedulerMonitor:
+    """Monitor do sistema de scheduler"""
+    
+    def __init__(self):
+        self.running = False
+        self.thread = None
+        self.ultima_execucao_scheduler = None
+        self.ultima_renovacao_diaria = None
+        
+    def start(self):
+        """Inicia o monitor"""
+        if self.running:
+            return
+            
+        self.running = True
+        self.thread = threading.Thread(target=self._run_monitor, daemon=True)
+        self.thread.start()
+        
+        # Agendar tarefas
+        self._agendar_tarefas()
+        
+        logger.info("🔄 Monitor do scheduler iniciado")
+        
+    def stop(self):
+        """Para o monitor"""
+        self.running = False
+        if self.thread:
+            self.thread.join(timeout=5)
+        logger.info("🛑 Monitor do scheduler parado")
+        
+    def _agendar_tarefas(self):
+        """Agenda tarefas recorrentes"""
+        
+        # Renovação diária às 00:01
+        schedule.every().day.at("00:01").do(self._renovar_carga_diaria)
+        
+        # Execução do scheduler a cada minuto para garantir execuções precisas
+        schedule.every(1).minutes.do(self._executar_scheduler_se_necessario)
+        
+        # Verificação de saúde a cada hora
+        schedule.every().hour.do(self._verificar_saude_sistema)
+        
+        # Verificação de rotinas travadas a cada 30 minutos
+        schedule.every(30).minutes.do(self._verificar_rotinas_travadas)
+        
+        logger.info("📅 Tarefas agendadas:")
+        logger.info("   - Renovação diária: 00:01")
+        logger.info("   - Scheduler: a cada 1 minuto")
+        logger.info("   - Verificação saúde: a cada hora")
+        logger.info("   - Verificação rotinas travadas: a cada 30 minutos")
+        
+    def _run_monitor(self):
+        """Loop principal do monitor"""
+        ultima_verificacao = datetime.now(BRAZIL_TZ)
+        
+        while self.running:
+            try:
+                # Executar tarefas agendadas
+                schedule.run_pending()
+                
+                # Verificar se há rotinas que deveriam ser executadas neste minuto exato
+                # para evitar perder execuções devido ao ciclo de sleep
+                self._verificar_execucoes_imediatas()
+                
+                # Registrar tempo de verificação para métricas de desempenho
+                agora = datetime.now(BRAZIL_TZ)
+                delta = (agora - ultima_verificacao).total_seconds()
+                if delta > 15:  # Se passou mais de 15 segundos entre verificações
+                    logger.warning(f"⚠️ Atraso de {delta:.1f}s entre verificações do monitor")
+                ultima_verificacao = agora
+                
+                # Sleep mais curto para garantir execução próxima ao horário exato
+                time.sleep(5)  # Verificar a cada 5 segundos para maior precisão
+            except ConnectionError as e:
+                logger.error(f"Erro de conexão no monitor: {e}", exc_info=True)
+                time.sleep(15)  # Aguardar um pouco mais em caso de erro de conexão
+            except Exception as e:
+                logger.error(f"Erro no monitor: {e}", exc_info=True)
+                time.sleep(10)  # Aguardar menos tempo para não perder execuções
+                
+    def _renovar_carga_diaria(self):
+        """Executa renovação diária às 00:01"""
+        try:
+            agora = datetime.now(BRAZIL_TZ)
+            logger.info(f"🌅 Iniciando renovação diária - {agora.strftime('%d/%m/%Y %H:%M:%S')}")
+            
+            # Importar aqui para evitar problemas de inicialização
+            from rotinas_automaticas.startup_scheduler import carregar_rotinas_diarias_startup
+            
+            # Executar carga diária
+            sucesso = carregar_rotinas_diarias_startup()
+            
+            if sucesso:
+                self.ultima_renovacao_diaria = agora
+                logger.info("✅ Renovação diária concluída com sucesso")
+            else:
+                logger.error("❌ Falha na renovação diária")
+                
+        except Exception as e:
+            logger.error(f"Erro na renovação diária: {e}", exc_info=True)
+            
+    def _executar_scheduler_se_necessario(self):
+        """Executa scheduler se houver rotinas pendentes"""
+        try:
+            inicio_verificacao = datetime.now(BRAZIL_TZ)
+            
+            # Permitir execução 24 horas por dia para garantir que todas as rotinas sejam executadas
+            agora = inicio_verificacao
+            
+            # Importar modelos
+            from rotinas_automaticas.models import FilaExecucao
+            
+            # Log do horário atual para depuração
+            hora_atual_str = agora.strftime('%H:%M:%S')
+            logger.debug(f"Monitor verificando rotinas pendentes às {hora_atual_str}")
+            
+            # Verificar se há rotinas pendentes para executar
+            pendentes_query = FilaExecucao.objects.filter(
+                status='PENDENTE',
+                data_execucao__lte=agora.date(),
+                horario_execucao__lte=agora.time()
+            )
+            
+            pendentes_count = pendentes_query.count()
+            
+            # Verificar também rotinas que estão próximas de executar (1 minuto no máximo)
+            proxima_execucao = None
+            proximas_rotinas = FilaExecucao.objects.filter(
+                status='PENDENTE',
+                data_execucao=agora.date(),
+            ).order_by('horario_execucao').first()
+            
+            if proximas_rotinas:
+                proxima_execucao = f"{proximas_rotinas.scheduler_rotina.rotina_definicao.nome_exibicao} às {proximas_rotinas.horario_execucao}"
+            
+            if pendentes_count > 0:
+                # Listar as rotinas pendentes detalhadamente para debug
+                rotinas_pendentes = []
+                for item in pendentes_query:
+                    rotina_nome = item.scheduler_rotina.rotina_definicao.nome_exibicao
+                    rotinas_pendentes.append(
+                        f"{rotina_nome} ({item.data_execucao} {item.horario_execucao})"
+                    )
+                
+                logger.info(f"🚀 Executando scheduler - {pendentes_count} rotina(s) pendente(s): {', '.join(rotinas_pendentes)}")
+                
+                # Executar scheduler
+                from rotinas_automaticas.scheduler_services import SchedulerService
+                
+                inicio_execucao = datetime.now(BRAZIL_TZ)
+                scheduler = SchedulerService()
+                resultado = scheduler.executor.executar_fila(limite_execucoes=pendentes_count)
+                fim_execucao = datetime.now(BRAZIL_TZ)
+                
+                self.ultima_execucao_scheduler = agora
+                
+                # Calcular tempo de execução
+                tempo_execucao = (fim_execucao - inicio_execucao).total_seconds()
+                
+                logger.info(f"✅ Scheduler executado - {resultado['total_executadas']} rotinas processadas em {tempo_execucao:.2f}s")
+                
+                # Log das próximas execuções se houver
+                if proxima_execucao:
+                    logger.debug(f"Próxima rotina agendada: {proxima_execucao}")
+            else:
+                # Log discreto quando não há rotinas pendentes
+                if proxima_execucao:
+                    logger.debug(f"Nenhuma rotina pendente. Próxima rotina agendada: {proxima_execucao}")
+                else:
+                    # Não precisamos logar toda vez que não há rotinas pendentes nem agendadas
+                    pass
+                
+        except Exception as e:
+            logger.error(f"Erro na execução do scheduler: {e}", exc_info=True)
+            
+    def _verificar_execucoes_imediatas(self):
+        """Verifica e executa rotinas do minuto atual para maior precisão"""
+        try:
+            # Importar modelos
+            from rotinas_automaticas.models import FilaExecucao
+            
+            # Obter hora atual com precisão de minuto
+            agora = datetime.now(BRAZIL_TZ)
+            hora_atual_str = agora.strftime('%H:%M')
+            hora_atual_time = datetime.strptime(hora_atual_str, '%H:%M').time()
+            
+            # Verificar rotinas do minuto atual com precisão
+            rotinas_do_minuto = FilaExecucao.objects.filter(
+                status='PENDENTE',
+                data_execucao=agora.date(),
+                horario_execucao__hour=agora.hour,
+                horario_execucao__minute=agora.minute
+            )
+            
+            if rotinas_do_minuto.exists():
+                logger.info(f"⏰ Execução imediata - Encontradas {rotinas_do_minuto.count()} rotina(s) para {hora_atual_str}")
+                
+                # Listar as rotinas para depuração
+                for item in rotinas_do_minuto:
+                    logger.info(f"⏰ Executando imediatamente: {item.scheduler_rotina.rotina_definicao.nome_exibicao} ({item.horario_execucao})")
+                
+                # Executar diretamente sem aguardar o scheduler normal
+                from rotinas_automaticas.scheduler_services import ExecutorRotinas
+                executor = ExecutorRotinas()
+                
+                # Executar cada rotina individualmente para garantir execução
+                for item in rotinas_do_minuto:
+                    try:
+                        resultado = executor._executar_rotina(item)
+                        status = "✅ Sucesso" if resultado["sucesso"] else "❌ Erro"
+                        logger.info(f"{status} na execução imediata: {item.scheduler_rotina.rotina_definicao.nome_exibicao}")
+                    except Exception as e:
+                        logger.error(f"Erro na execução imediata: {e}", exc_info=True)
+        except Exception as e:
+            logger.error(f"Erro na verificação de execuções imediatas: {e}", exc_info=True)
+    
+    def _verificar_saude_sistema(self):
+        """Verifica saúde geral do sistema"""
+        try:
+            agora = datetime.now(BRAZIL_TZ)
+            
+            from rotinas_automaticas.models import FilaExecucao, CargaDiariaRotinas, SchedulerRotina
+            from django.db import connection
+            from django.utils import timezone
+            from datetime import timedelta
+            
+            # Estatísticas gerais
+            total_fila = FilaExecucao.objects.count()
+            pendentes = FilaExecucao.objects.filter(status='PENDENTE').count()
+            erros = FilaExecucao.objects.filter(status='ERRO').count()
+            recovery = FilaExecucao.objects.filter(status='RECOVERY').count()
+            executando = FilaExecucao.objects.filter(status='EXECUTANDO').count()
+            
+            # Verificar execuções travadas (executando há mais de 1 hora)
+            hora_atras = timezone.now() - timedelta(hours=1)
+            executando_travadas = FilaExecucao.objects.filter(
+                status='EXECUTANDO',
+                iniciado_em__lt=hora_atras
+            ).count()
+            
+            # Verificar carga diária de hoje
+            carga_hoje = CargaDiariaRotinas.objects.filter(
+                data_carga=agora.date()
+            ).first()
+            
+            # Rotinas ativas
+            rotinas_ativas = SchedulerRotina.objects.filter(executar=True).count()
+            
+            # Verificar conexões do banco
+            conexoes_abertas = len(connection.connection.notices) if hasattr(connection, 'connection') and hasattr(connection.connection, 'notices') else 0
+            
+            # Verificar uso de memória não é necessário para o funcionamento principal
+            # e psutil não é uma dependência obrigatória
+            
+            logger.info(f"💊 Verificação de saúde - {agora.strftime('%d/%m/%Y %H:%M')}")
+            logger.info(f"   Fila: {total_fila} total, {pendentes} pendentes, {executando} executando, {erros} erros, {recovery} recovery")
+            logger.info(f"   Carga hoje: {'✅' if carga_hoje else '❌'}")
+            logger.info(f"   Rotinas ativas: {rotinas_ativas}")
+            logger.info(f"   Monitor ativo há: {(agora - self.ultima_renovacao_diaria).total_seconds() / 3600:.1f} horas" if self.ultima_renovacao_diaria else "   Monitor iniciado recentemente")
+            
+            # Alertas
+            if not carga_hoje:
+                logger.warning("⚠️  ALERTA: Carga diária não encontrada para hoje")
+                
+            if erros > 5:
+                logger.warning(f"⚠️  ALERTA: {erros} rotinas com erro")
+                
+            if recovery > 3:
+                logger.warning(f"⚠️  ALERTA: {recovery} rotinas em recovery")
+                
+            if executando_travadas > 0:
+                logger.warning(f"⚠️  ALERTA: {executando_travadas} rotinas parecem estar travadas (executando há mais de 1 hora)")
+                
+            if pendentes > 20:
+                logger.warning(f"⚠️  ALERTA: Acúmulo de {pendentes} rotinas pendentes")
+                
+        except Exception as e:
+            logger.error(f"Erro na verificação de saúde: {e}", exc_info=True)
+            
+    def _verificar_rotinas_travadas(self):
+        """Verifica e corrige rotinas que ficaram travadas em execução"""
+        try:
+            from rotinas_automaticas.scheduler_services import ExecutorRotinas
+            
+            # Verificar rotinas travadas há mais de 1 hora
+            executor = ExecutorRotinas()
+            resultado = executor.verificar_rotinas_travadas(limite_horas=1)
+            
+            if resultado['total_rotinas_travadas'] > 0:
+                rotinas = [f"{r['nome']} ({r['duracao_minutos']:.1f} min)" for r in resultado['rotinas_corrigidas']]
+                logger.warning(f"🔄 Corrigidas {resultado['total_rotinas_travadas']} rotinas travadas: {', '.join(rotinas)}")
+            
+        except Exception as e:
+            logger.error(f"Erro na verificação de rotinas travadas: {e}", exc_info=True)
+
+# Instância global do monitor
+monitor_global = None
+
+def iniciar_monitor():
+    """Inicia o monitor global"""
+    global monitor_global
+    
+    if monitor_global is None:
+        monitor_global = SchedulerMonitor()
+        
+    if not monitor_global.running:
+        monitor_global.start()
+        return True
+    return False
+
+def parar_monitor():
+    """Para o monitor global"""
+    global monitor_global
+    
+    if monitor_global and monitor_global.running:
+        monitor_global.stop()
+        return True
+    return False
+
+def status_monitor():
+    """Retorna status do monitor"""
+    global monitor_global
+    
+    if monitor_global and monitor_global.running:
+        return {
+            'ativo': True,
+            'ultima_execucao_scheduler': monitor_global.ultima_execucao_scheduler,
+            'ultima_renovacao_diaria': monitor_global.ultima_renovacao_diaria
+        }
+    return {'ativo': False}

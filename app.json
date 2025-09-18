@@ -1,0 +1,27 @@
+{
+  "name": "Serviços Organizesee",
+  "description": "Sistema de serviços e rotinas automatizadas para processamento de dados",
+  "repository": "https://github.com/Organizesee/ProdService",
+  "keywords": ["python", "django", "rest", "api", "scheduler"],
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "env": {
+    "SECRET_KEY": {
+      "description": "A secret key for Django application",
+      "generator": "secret"
+    },
+    "DEBUG": {
+      "description": "Set to False in production",
+      "value": "False"
+    }
+  },
+  "addons": [
+    {
+      "plan": "heroku-postgresql",
+      "as": "DATABASE"
+    }
+  ]
+}
