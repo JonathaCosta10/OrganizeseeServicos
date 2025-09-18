@@ -1,7 +1,7 @@
 {
   "name": "Serviços Organizesee",
   "description": "Sistema de serviços e rotinas automatizadas para processamento de dados",
-  "repository": "https://github.com/Organizesee/ProdService",
+  "repository": "https://github.com/JonathaCosta10/OrganizeseeServicos",
   "keywords": ["python", "django", "rest", "api", "scheduler"],
   "buildpacks": [
     {

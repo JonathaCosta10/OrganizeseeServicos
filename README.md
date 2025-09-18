@@ -1,6 +1,6 @@
 # Serviços - Rotinas Automáticas
 
-![GitHub last commit](https://img.shields.io/github/last-commit/Organizesee/ProdService)
+![GitHub last commit](https://img.shields.io/github/last-commit/JonathaCosta10/OrganizeseeServicos)
 ![Python](https://img.shields.io/badge/python-3.11-blue)
 ![Django](https://img.shields.io/badge/django-5.2-green)
 
@@ -81,8 +81,8 @@ Sistema de rotinas automatizadas para download e processamento de dados financei
 
 1. **Clonar o repositório**
    ```bash
-   git clone https://github.com/Organizesee/ProdService.git
-   cd ProdService
+   git clone https://github.com/JonathaCosta10/OrganizeseeServicos.git
+   cd OrganizeseeServicos
    ```
 
 2. **Criar e ativar ambiente virtual**
@@ -292,4 +292,4 @@ Este projeto é licenciado sob a licença MIT.
 
 ---
 
-Desenvolvido por [Organizesee](https://github.com/Organizesee)
+Desenvolvido por [Jonatha Costa](https://github.com/JonathaCosta10)
