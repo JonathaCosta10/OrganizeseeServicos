@@ -12,7 +12,12 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 import os
 from pathlib import Path
-import dj_database_url
+
+# Importação condicional para funcionar tanto no Heroku quanto localmente
+try:
+    import dj_database_url
+except ImportError:
+    dj_database_url = None
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -48,7 +53,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
-    "whitenoise.middleware.WhiteNoiseMiddleware",
+    # WhiteNoise Middleware - importado condicionalmente
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -93,7 +98,7 @@ DATABASES = {
 
 # Heroku: Update database configuration from $DATABASE_URL
 DATABASE_URL = os.environ.get('DATABASE_URL')
-if DATABASE_URL:
+if DATABASE_URL and dj_database_url:
     DATABASES['default'] = dj_database_url.config(
         default=DATABASE_URL,
         conn_max_age=600,
@@ -143,8 +148,18 @@ STATICFILES_DIRS = [
 # The absolute path to the directory where collectstatic will collect static files for deployment.
 STATIC_ROOT = BASE_DIR / "staticfiles"
 
-# Enable WhiteNoise compression and caching
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+# Configuração condicional do WhiteNoise
+try:
+    import whitenoise
+    # Adiciona WhiteNoiseMiddleware se disponível
+    if "django.middleware.security.SecurityMiddleware" in MIDDLEWARE:
+        middleware_index = MIDDLEWARE.index("django.middleware.security.SecurityMiddleware")
+        MIDDLEWARE.insert(middleware_index + 1, "whitenoise.middleware.WhiteNoiseMiddleware")
+    # Enable WhiteNoise compression and caching
+    STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+except ImportError:
+    # WhiteNoise não disponível - ignorar configuração (desenvolvimento local)
+    pass
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
