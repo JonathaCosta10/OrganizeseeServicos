@@ -251,11 +251,11 @@ class CargaDiariaService:
         # Primeiro, garantir que temos os dados mais recentes da rotina
         rotina_atualizada = SchedulerRotina.objects.get(pk=rotina.pk)
         
-        # Verificar se já existe na fila para evitar duplicatas
+        # Verificar se já existe na fila para evitar duplicatas (qualquer status)
         existe = FilaExecucao.objects.filter(
             scheduler_rotina=rotina,
             data_execucao=data_execucao,
-            status='PENDENTE'  # Verificar apenas pendentes
+            horario_execucao=rotina_atualizada.horario_execucao
         ).exists()
         
         if not existe:
@@ -266,6 +266,9 @@ class CargaDiariaService:
                 prioridade=rotina_atualizada.prioridade,  # Usar prioridade atualizada
                 max_tentativas=rotina_atualizada.max_tentativas_recovery
             )
+        else:
+            self.logger.log('WARNING', 'CargaDiaria', 
+                          f"Item já existe na fila para rotina {rotina.nome}, data {data_execucao} e horário {rotina_atualizada.horario_execucao}")
             
             self.logger.log('DEBUG', 'CargaDiaria', 
                           f'Rotina adicionada à fila: {rotina.rotina_definicao.nome_exibicao} às {rotina_atualizada.horario_execucao}')

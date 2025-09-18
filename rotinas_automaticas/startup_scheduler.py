@@ -28,8 +28,13 @@ logger = logging.getLogger('scheduler_startup')
 def carregar_rotinas_diarias_startup():
     """Carrega rotinas diárias no startup do servidor"""
     try:
+        # Fechar conexões antigas para evitar problemas de "connection already closed"
+        from django.db import close_old_connections
+        close_old_connections()
+        
         from rotinas_automaticas.scheduler_services import CargaDiariaService
         from rotinas_automaticas.models import CargaDiariaRotinas
+        from django.db.utils import InterfaceError, OperationalError, IntegrityError
         
         agora = datetime.now(BRAZIL_TZ)
         data_hoje = agora.date()
@@ -38,29 +43,47 @@ def carregar_rotinas_diarias_startup():
         print(f"🚀 SCHEDULER STARTUP - {agora.strftime('%d/%m/%Y %H:%M:%S')}")
         print(f"{'='*60}")
         
-        # No início do servidor, sempre substituir a carga diária para considerar os horários atuais
-        carga_existente = CargaDiariaRotinas.objects.filter(
-            data_carga=data_hoje
-        ).first()
-        
-        if carga_existente:
-            print(f"🔄 Substituindo carga diária existente para {data_hoje}")
-            print(f"   Status anterior: {carga_existente.status}")
-            print(f"   Criada originalmente em: {carga_existente.iniciado_em}")
-        else:
-            print(f"📅 Criando primeira carga diária para {data_hoje}...")
+        try:
+            # No início do servidor, sempre substituir a carga diária para considerar os horários atuais
+            carga_existente = CargaDiariaRotinas.objects.filter(
+                data_carga=data_hoje
+            ).first()
             
-        # Executar carga diária com substituição
-        servico = CargaDiariaService()
-        resultado = servico.executar_carga_diaria(data_hoje)
-        
-        print(f"✅ Carga diária concluída!")
-        print(f"   Rotinas processadas: {resultado.total_rotinas_processadas}")
-        print(f"   Adicionadas à fila: {resultado.total_rotinas_adicionadas_fila}")
-        print(f"   Arquivo log: {resultado.arquivo_log}")
+            if carga_existente:
+                print(f"🔄 Substituindo carga diária existente para {data_hoje}")
+                print(f"   Status anterior: {carga_existente.status}")
+                print(f"   Criada originalmente em: {carga_existente.iniciado_em}")
+            else:
+                print(f"📅 Criando primeira carga diária para {data_hoje}...")
+        except (InterfaceError, OperationalError) as db_err:
+            # Reconectar e tentar novamente
+            close_old_connections()
+            print(f"⚠️ Reconectando ao banco de dados: {str(db_err)}")
+            carga_existente = None
+            
+        try:
+            # Executar carga diária com substituição
+            servico = CargaDiariaService()
+            resultado = servico.executar_carga_diaria(data_hoje)
+            
+            print(f"✅ Carga diária concluída!")
+            print(f"   Rotinas processadas: {resultado.total_rotinas_processadas}")
+            print(f"   Adicionadas à fila: {resultado.total_rotinas_adicionadas_fila}")
+            print(f"   Arquivo log: {resultado.arquivo_log}")
+        except IntegrityError as integ_err:
+            # Captura específica para erro de integridade
+            print(f"⚠️ Detectados registros duplicados. Será feita uma limpeza automática.")
+            print(f"   Erro original: {str(integ_err)}")
+            
+            # Tentar limpar duplicatas e continuar
+            from rotinas_automaticas.scheduler_services import SchedulerService
+            scheduler = SchedulerService()
+            duplicatas = scheduler.verificar_duplicatas_fila()
+            print(f"🧹 Limpeza automática: {duplicatas} item(ns) duplicado(s) removido(s) da fila")
         
         # Verificar status da fila
         from rotinas_automaticas.models import FilaExecucao
+        close_old_connections()  # Reabrir conexão antes de consultar
         
         total_fila = FilaExecucao.objects.count()
         pendentes = FilaExecucao.objects.filter(status='PENDENTE').count()
@@ -143,6 +166,17 @@ def inicializar_scheduler():
     """Função principal de inicialização do scheduler"""
     print(f"\n🔧 Inicializando sistema de scheduler...")
     
+    # Fechar conexões antigas para evitar problemas
+    from django.db import close_old_connections
+    close_old_connections()
+    
+    # Verificar se estamos no Heroku
+    import os
+    is_heroku = os.environ.get('DYNO') is not None
+    
+    if is_heroku:
+        print("🚀 Detectado ambiente Heroku")
+    
     # Verificar integridade
     if not verificar_integridade_scheduler():
         print("⚠️  Problemas detectados na configuração")
@@ -153,18 +187,26 @@ def inicializar_scheduler():
         
         from rotinas_automaticas.scheduler_services import SchedulerService
         from rotinas_automaticas.models import FilaExecucao, SchedulerRotina
+        from django.db.utils import InterfaceError, OperationalError
         
-        # Verificar e corrigir itens com horários desatualizados
-        scheduler = SchedulerService()
-        corrigidos = scheduler.corrigir_horarios_desatualizados_fila()
-        if corrigidos > 0:
-            print(f"⚠️ Encontrados {corrigidos} item(ns) com horários desatualizados")
-            print("   Executando carga diária para corrigir configurações...")
-        
-        # Verificar e limpar itens duplicados na fila
-        duplicatas = scheduler.verificar_duplicatas_fila()
-        if duplicatas > 0:
-            print(f"🧹 Limpeza automática: {duplicatas} item(ns) duplicado(s) removido(s) da fila")
+        try:
+            # Verificar e corrigir itens com horários desatualizados
+            scheduler = SchedulerService()
+            corrigidos = scheduler.corrigir_horarios_desatualizados_fila()
+            if corrigidos > 0:
+                print(f"⚠️ Encontrados {corrigidos} item(ns) com horários desatualizados")
+                print("   Executando carga diária para corrigir configurações...")
+            
+            # Verificar e limpar itens duplicados na fila
+            duplicatas = scheduler.verificar_duplicatas_fila()
+            if duplicatas > 0:
+                print(f"🧹 Limpeza automática: {duplicatas} item(ns) duplicado(s) removido(s) da fila")
+                
+        except (InterfaceError, OperationalError) as db_err:
+            # Reconectar e continuar
+            close_old_connections()
+            print(f"⚠️ Erro de conexão com banco de dados: {str(db_err)}")
+            print("   Continuando inicialização...")
         
         # Carregar rotinas diárias com substituição automática
         carregar_rotinas_diarias_startup()
