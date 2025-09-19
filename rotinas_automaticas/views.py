@@ -1055,6 +1055,27 @@ def status_monitor(request):
             'error': str(e),
             'timestamp': datetime.now().isoformat()
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        
+@api_view(['GET'])
+def verificar_saude_monitor(request):
+    """Verifica saúde do monitor e o reinicia automaticamente se necessário"""
+    try:
+        from .monitor_scheduler import verificar_saude_monitor
+        
+        resultado = verificar_saude_monitor()
+        
+        return Response({
+            'resultado': resultado,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        return Response({
+            'success': False,
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # --- Novas APIs para gerenciamento de rotinas ---

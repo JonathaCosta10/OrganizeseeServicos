@@ -46,6 +46,7 @@ class SchedulerMonitor:
         self.ultima_execucao_scheduler = None
         self.ultima_renovacao_diaria = None
         self.inicio_monitor = None
+        self.ultima_verificacao_bem_sucedida = None
         
     def start(self):
         """Inicia o monitor"""
@@ -68,6 +69,56 @@ class SchedulerMonitor:
         if self.thread:
             self.thread.join(timeout=5)
         logger.info("🛑 Monitor do scheduler parado")
+        
+    def verificar_saude_externa(self):
+        """Método para verificar a saúde do monitor a partir de uma chamada externa (view, cron, etc)"""
+        agora = datetime.now(BRAZIL_TZ)
+        
+        # Se o monitor não estiver rodando ou sem verificação recente, reiniciar
+        if not self.running or self.thread is None or not self.thread.is_alive():
+            logger.critical("🚨 Monitor não está rodando! Reiniciando...")
+            try:
+                self.stop()
+                time.sleep(2)
+                self.start()
+                return {"status": "reiniciado", "mensagem": "Monitor não estava rodando e foi reiniciado"}
+            except Exception as e:
+                logger.critical(f"❌ Falha ao reiniciar o monitor: {e}", exc_info=True)
+                return {"status": "erro", "mensagem": f"Falha ao reiniciar o monitor: {str(e)}"}
+        
+        # Verificar se houve atualização recente
+        if self.ultima_verificacao_bem_sucedida:
+            tempo_sem_atualizacao = (agora - self.ultima_verificacao_bem_sucedida).total_seconds() / 60
+            
+            # Se não houver atualização há mais de 10 minutos, reiniciar
+            if tempo_sem_atualizacao > 10:
+                logger.warning(f"⚠️ Monitor sem atualização há {tempo_sem_atualizacao:.1f} minutos! Reiniciando...")
+                try:
+                    self.stop()
+                    time.sleep(2)
+                    self.start()
+                    return {"status": "reiniciado", "mensagem": f"Monitor estava travado há {tempo_sem_atualizacao:.1f} minutos e foi reiniciado"}
+                except Exception as e:
+                    logger.critical(f"❌ Falha ao reiniciar o monitor após inatividade: {e}", exc_info=True)
+                    return {"status": "erro", "mensagem": f"Falha ao reiniciar o monitor: {str(e)}"}
+            else:
+                return {"status": "ok", "mensagem": f"Monitor saudável, última atualização há {tempo_sem_atualizacao:.1f} minutos"}
+        else:
+            # Se nunca houve verificação bem-sucedida desde o início, verificar tempo desde início
+            tempo_desde_inicio = (agora - self.inicio_monitor).total_seconds() / 60 if self.inicio_monitor else float('inf')
+            
+            if tempo_desde_inicio > 5:  # Mais de 5 minutos sem verificação bem-sucedida
+                logger.warning(f"⚠️ Monitor sem verificação bem-sucedida há {tempo_desde_inicio:.1f} minutos desde o início! Reiniciando...")
+                try:
+                    self.stop()
+                    time.sleep(2)
+                    self.start()
+                    return {"status": "reiniciado", "mensagem": f"Monitor sem verificação bem-sucedida desde o início há {tempo_desde_inicio:.1f} minutos e foi reiniciado"}
+                except Exception as e:
+                    logger.critical(f"❌ Falha ao reiniciar o monitor após inatividade desde o início: {e}", exc_info=True)
+                    return {"status": "erro", "mensagem": f"Falha ao reiniciar o monitor: {str(e)}"}
+            else:
+                return {"status": "iniciando", "mensagem": f"Monitor iniciado há {tempo_desde_inicio:.1f} minutos, aguardando primeira verificação"}
         
     def _close_old_connections(self):
         """Fecha conexões antigas com o banco de dados para evitar problemas"""
@@ -105,8 +156,17 @@ class SchedulerMonitor:
         
         while self.running:
             try:
-                # Fechar conexões antigas para evitar problemas
-                self._close_old_connections()
+                # Fechar conexões antigas para evitar problemas - com tratamento de erro
+                try:
+                    # Tentar usar o método da classe primeiro
+                    if hasattr(self, '_close_old_connections'):
+                        self._close_old_connections()
+                    else:
+                        # Caso não exista, usar o módulo diretamente
+                        from django.db import close_old_connections
+                        close_old_connections()
+                except Exception as e:
+                    logger.warning(f"Erro ao fechar conexões antigas no monitor principal: {e}, mas continuando execução...")
                 
                 # Executar tarefas agendadas
                 schedule.run_pending()
@@ -127,6 +187,9 @@ class SchedulerMonitor:
                     logger.info(f"✅ Monitor recuperado após {falhas_consecutivas} falhas consecutivas")
                     falhas_consecutivas = 0
                 
+                # Registrar última verificação bem-sucedida para health check
+                self.ultima_verificacao_bem_sucedida = datetime.now(BRAZIL_TZ)
+                
                 # Sleep mais curto para garantir execução próxima ao horário exato
                 time.sleep(5)  # Verificar a cada 5 segundos para maior precisão
                 
@@ -141,17 +204,37 @@ class SchedulerMonitor:
             
             except Exception as e:
                 # Capturar qualquer outra exceção para garantir que o monitor continue rodando
-                logger.error(f"Erro inesperado no monitor: {e}", exc_info=True)
+                falhas_consecutivas += 1
+                logger.error(f"Erro inesperado no monitor: {e} (Falha #{falhas_consecutivas})", exc_info=True)
                 time.sleep(10)  # Aguardar um tempo padrão
-            except Exception as e:
-                logger.error(f"Erro no monitor: {e}", exc_info=True)
-                time.sleep(10)  # Aguardar menos tempo para não perder execuções
+                
+                # Se houver muitas falhas consecutivas, tentar reiniciar o monitor
+                if falhas_consecutivas >= 10:
+                    logger.critical(f"⚠️ ALERTA: {falhas_consecutivas} falhas consecutivas. Tentando reiniciar o monitor...")
+                    try:
+                        # Tentar reiniciar o thread do monitor
+                        self.stop()
+                        time.sleep(5)
+                        self.start()
+                        logger.info("✅ Monitor reiniciado com sucesso após falhas consecutivas")
+                        falhas_consecutivas = 0
+                    except Exception as restart_error:
+                        logger.critical(f"❌ Falha ao tentar reiniciar o monitor: {restart_error}", exc_info=True)
                 
     def _renovar_carga_diaria(self):
         """Executa renovação diária às 00:01"""
         try:
-            # Fechar conexões antigas antes de iniciar novas consultas
-            self._close_old_connections()
+            # Fechar conexões antigas antes de iniciar novas consultas - com tratamento de erro
+            try:
+                # Tentar usar o método da classe primeiro
+                if hasattr(self, '_close_old_connections'):
+                    self._close_old_connections()
+                else:
+                    # Caso não exista, usar o módulo diretamente
+                    from django.db import close_old_connections
+                    close_old_connections()
+            except Exception as e:
+                logger.warning(f"Erro ao fechar conexões antigas: {e}, mas continuando execução...")
             
             agora = datetime.now(BRAZIL_TZ)
             logger.info(f"🌅 Iniciando renovação diária - {agora.strftime('%d/%m/%Y %H:%M:%S')}")
@@ -180,8 +263,17 @@ class SchedulerMonitor:
     def _executar_scheduler_se_necessario(self):
         """Executa scheduler se houver rotinas pendentes"""
         try:
-            # Fechar conexões antigas antes de iniciar novas consultas
-            self._close_old_connections()
+            # Fechar conexões antigas antes de iniciar novas consultas - com tratamento de erro
+            try:
+                # Tentar usar o método da classe primeiro
+                if hasattr(self, '_close_old_connections'):
+                    self._close_old_connections()
+                else:
+                    # Caso não exista, usar o módulo diretamente
+                    from django.db import close_old_connections
+                    close_old_connections()
+            except Exception as e:
+                logger.warning(f"Erro ao fechar conexões antigas na execução do scheduler: {e}, mas continuando execução...")
             
             inicio_verificacao = datetime.now(BRAZIL_TZ)
             
@@ -267,8 +359,17 @@ class SchedulerMonitor:
     def _verificar_execucoes_imediatas(self):
         """Verifica e executa rotinas do minuto atual para maior precisão"""
         try:
-            # Fechar conexões antigas antes de iniciar novas consultas
-            self._close_old_connections()
+            # Fechar conexões antigas antes de iniciar novas consultas - com tratamento de erro
+            try:
+                # Tentar usar o método da classe primeiro
+                if hasattr(self, '_close_old_connections'):
+                    self._close_old_connections()
+                else:
+                    # Caso não exista, usar o módulo diretamente
+                    from django.db import close_old_connections
+                    close_old_connections()
+            except Exception as e:
+                logger.warning(f"Erro ao fechar conexões antigas na verificação de execuções imediatas: {e}, mas continuando execução...")
             
             # Importar modelos
             from rotinas_automaticas.models import FilaExecucao
@@ -319,10 +420,34 @@ class SchedulerMonitor:
     def _verificar_saude_sistema(self):
         """Verifica saúde geral do sistema"""
         try:
-            # Fechar conexões antigas antes de iniciar novas consultas
-            self._close_old_connections()
+            # Fechar conexões antigas antes de iniciar novas consultas - com tratamento de erro
+            try:
+                # Tentar usar o método da classe primeiro
+                if hasattr(self, '_close_old_connections'):
+                    self._close_old_connections()
+                else:
+                    # Caso não exista, usar o módulo diretamente
+                    from django.db import close_old_connections
+                    close_old_connections()
+            except Exception as e:
+                logger.warning(f"Erro ao fechar conexões antigas na verificação de saúde: {e}, mas continuando execução...")
             
             agora = datetime.now(BRAZIL_TZ)
+            
+            # Verificar há quanto tempo o sistema está rodando
+            tempo_execucao = (agora - self.inicio_monitor).total_seconds() / 60 / 60  # em horas
+            
+            # Forçar reinício a cada 24 horas para garantir limpeza de recursos
+            if tempo_execucao > 24:
+                logger.warning(f"🔄 Monitor executando há {tempo_execucao:.1f} horas. Realizando reinicialização preventiva...")
+                try:
+                    self.stop()
+                    time.sleep(5)
+                    self.start()
+                    logger.info("✅ Monitor reiniciado preventivamente com sucesso")
+                    return
+                except Exception as restart_error:
+                    logger.error(f"❌ Falha ao tentar reinício preventivo do monitor: {restart_error}", exc_info=True)
             
             from rotinas_automaticas.models import FilaExecucao, CargaDiariaRotinas, SchedulerRotina
             from django.db import connection
@@ -388,8 +513,17 @@ class SchedulerMonitor:
     def _verificar_rotinas_travadas(self):
         """Verifica e corrige rotinas que ficaram travadas em execução"""
         try:
-            # Fechar conexões antigas antes de iniciar novas consultas
-            self._close_old_connections()
+            # Fechar conexões antigas antes de iniciar novas consultas - com tratamento de erro
+            try:
+                # Tentar usar o método da classe primeiro
+                if hasattr(self, '_close_old_connections'):
+                    self._close_old_connections()
+                else:
+                    # Caso não exista, usar o módulo diretamente
+                    from django.db import close_old_connections
+                    close_old_connections()
+            except Exception as e:
+                logger.warning(f"Erro ao fechar conexões antigas na verificação de rotinas travadas: {e}, mas continuando execução...")
             
             from rotinas_automaticas.scheduler_services import ExecutorRotinas
             from django.db.utils import InterfaceError, OperationalError
@@ -441,6 +575,41 @@ def parar_monitor():
         return True
     logger.info("ℹ️ Monitor de rotinas não está em execução")
     return False
+    
+    
+def verificar_saude_monitor():
+    """Verifica saúde do monitor e reinicia automaticamente se necessário"""
+    global monitor_global
+    
+    # Se o monitor não existe, inicializá-lo
+    if monitor_global is None:
+        logger.warning("⚠️ Monitor não existe! Inicializando...")
+        iniciar_monitor()
+        return {
+            "status": "iniciado",
+            "mensagem": "Monitor não existia e foi inicializado"
+        }
+    
+    # Se o monitor existe, verificar sua saúde
+    try:
+        return monitor_global.verificar_saude_externa()
+    except Exception as e:
+        logger.error(f"❌ Erro ao verificar saúde do monitor: {e}", exc_info=True)
+        
+        # Tentar reinicializar o monitor em caso de erro
+        try:
+            parar_monitor()
+            time.sleep(2)
+            iniciar_monitor()
+            return {
+                "status": "reiniciado_erro",
+                "mensagem": f"Monitor reiniciado após erro: {str(e)}"
+            }
+        except Exception as restart_error:
+            return {
+                "status": "erro",
+                "mensagem": f"Falha ao reiniciar monitor: {str(restart_error)}"
+            }
 
 def status_monitor():
     """Retorna status do monitor"""
@@ -457,12 +626,19 @@ def status_monitor():
         if monitor_global.ultima_renovacao_diaria:
             tempo_desde_renovacao = (agora - monitor_global.ultima_renovacao_diaria).total_seconds() / 3600.0
         
+        # Calcular tempo desde última verificação bem-sucedida
+        tempo_desde_ultima_verificacao = None
+        if monitor_global.ultima_verificacao_bem_sucedida:
+            tempo_desde_ultima_verificacao = (agora - monitor_global.ultima_verificacao_bem_sucedida).total_seconds() / 60.0
+            
         return {
             'ativo': True,
             'ultima_execucao_scheduler': monitor_global.ultima_execucao_scheduler,
             'tempo_desde_ultima_exec_min': tempo_desde_ultima_exec,
             'ultima_renovacao_diaria': monitor_global.ultima_renovacao_diaria,
             'tempo_desde_renovacao_horas': tempo_desde_renovacao,
-            'inicio_monitor': monitor_global.inicio_monitor
+            'inicio_monitor': monitor_global.inicio_monitor,
+            'ultima_verificacao_bem_sucedida': monitor_global.ultima_verificacao_bem_sucedida,
+            'tempo_desde_ultima_verificacao_min': tempo_desde_ultima_verificacao
         }
     return {'ativo': False}

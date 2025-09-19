@@ -19,6 +19,7 @@ urlpatterns = [
     # APIs do Monitor
     path('api/scheduler/monitor/status/', views.status_monitor, name='scheduler_monitor_status'),
     path('api/scheduler/monitor/reiniciar/', views.reiniciar_monitor, name='scheduler_monitor_reiniciar'),
+    path('api/scheduler/monitor/health-check/', views.verificar_saude_monitor, name='scheduler_monitor_health_check'),
     
     # Novas APIs para gerenciamento de Rotinas
     path('api/scheduler/rotinas/', views.listar_rotinas, name='scheduler_listar_rotinas'),
