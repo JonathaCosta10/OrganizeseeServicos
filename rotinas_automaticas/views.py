@@ -557,9 +557,16 @@ def static_arquivos(request):
                 # Executar carga de arquivo específico
                 arquivo = request.data.get('arquivo')
                 
+                # Log detalhado para debug
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"[DEBUG] Recebido request para carga: acao={acao}, arquivo={arquivo}")
+                logger.info(f"[DEBUG] Request data completo: {request.data}")
+                
                 if not arquivo:
                     return Response({
                         'error': 'Parâmetro "arquivo" é obrigatório para ação "carga"',
+                        'request_data_recebido': request.data,
                         'exemplo': {
                             'acao': 'carga',
                             'arquivo': 'TradeInformationConsolidatedFile_20250910_1.csv'

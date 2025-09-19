@@ -158,7 +158,7 @@ class Command(BaseCommand):
                 'horario_execucao': '10:00:00',
                 'endpoint_url': f"{settings.BASE_URL}/api/static_arquivos/",
                 'metodo_http': 'POST',
-                'payload_json': '{"acao": "Carga", "arquivo": "TradeInformationConsolidatedFile*.csv"}',
+                'payload_json': '{"acao": "carga", "arquivo": "TradeInformationConsolidatedFile*.csv"}',
                 'mascara_arquivo': 'TradeInformationConsolidatedFile*.csv'
             }
         ]
