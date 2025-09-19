@@ -89,25 +89,36 @@ WSGI_APPLICATION = "servicos.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    "default": {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'dagjgmra6bck94',
-        'USER': 'u71lo0hl2prk2v',
-        'PASSWORD': 'p7c0b8d9f79594dac5c5b95f2fc38a3208eb662cb439a00ff133de32c68f55801',
-        'HOST': 'casrkuuedp6an1.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com',
-        'PORT': '5432',
-    }
-}
-
 # Heroku: Update database configuration from $DATABASE_URL
 DATABASE_URL = os.environ.get('DATABASE_URL')
 if DATABASE_URL and dj_database_url:
-    DATABASES['default'] = dj_database_url.config(
-        default=DATABASE_URL,
-        conn_max_age=600,
-        ssl_require=True
-    )
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=DATABASE_URL,
+            conn_max_age=600,
+            ssl_require=True,
+            conn_health_checks=True,
+        )
+    }
+    # Adicionar opções específicas para PostgreSQL
+    DATABASES['default']['OPTIONS'] = {
+        'options': '-c default_transaction_isolation=serializable -c client_encoding=UTF8'
+    }
+else:
+    # Configuração local de desenvolvimento
+    DATABASES = {
+        "default": {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': 'dagjgmra6bck94',
+            'USER': 'u71lo0hl2prk2v',
+            'PASSWORD': 'p7c0b8d9f79594dac5c5b95f2fc38a3208eb662cb439a00ff133de32c68f55801',
+            'HOST': 'casrkuuedp6an1.cluster-czrs8kj4isg7.us-east-1.rds.amazonaws.com',
+            'PORT': '5432',
+            'OPTIONS': {
+                'options': '-c default_transaction_isolation=serializable -c client_encoding=UTF8'
+            }
+        }
+    }
 
 
 # Password validation
@@ -132,13 +143,16 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/
 
-LANGUAGE_CODE = "en-us"
+LANGUAGE_CODE = "pt-br"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "America/Sao_Paulo"
 
 USE_I18N = True
 
 USE_TZ = True
+
+# Configurações de encoding para PostgreSQL
+DEFAULT_CHARSET = 'utf-8'
 
 
 # Static files (CSS, JavaScript, Images)
