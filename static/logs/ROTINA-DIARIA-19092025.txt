@@ -5,9 +5,9 @@ LOG DE CARGA DIÁRIA DE ROTINAS
 INFORMAÇÕES GERAIS
 ----------------------------------------
 Data da carga: 19/09/2025
-Horário de início: 19/09/2025 01:37:04
-Horário de finalização: 19/09/2025 01:37:07
-Duração: 2 segundos
+Horário de início: 19/09/2025 02:04:28
+Horário de finalização: 19/09/2025 02:04:31
+Duração: 3 segundos
 Status: Concluída
 
 ESTATÍSTICAS DE PROCESSAMENTO
@@ -18,9 +18,9 @@ Total de rotinas ignoradas: 0
 
 ROTINAS ADICIONADAS À FILA
 ----------------------------------------
-   - Carregar Preços Trade Consolidado (Diário) - 02:00
+   - Carregar Preços Trade Consolidado (Diário) - 02:15
    - Download CVM (Diário) - 01:40
-   - Download B3 (Diário) - 01:40
+   - Download B3 (Diário) - 02:02
 
 ================================================================================
 FIM DO LOG
