@@ -37,8 +37,8 @@ ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.herokuapp.com']
 
 # URL base para chamadas de API internas (com fallback para localhost em desenvolvimento)
 # Em produção, define-se com a URL completa do serviço, como https://seu-app.herokuapp.com
-BASE_URL = os.environ.get('BASE_URL', 'http://127.0.0.1:8000')
-
+BASE_URL = os.environ.get('BASE_URL', 'https://service-organizesee-5f72417f9331.herokuapp.com/') #http://127.0.0.1:8000')
+#heroku config:set BASE_URL=https://service-organizesee-5f72417f9331.herokuapp.com -a service-organizesee-5f72417f9331
 
 # Application definition
 
