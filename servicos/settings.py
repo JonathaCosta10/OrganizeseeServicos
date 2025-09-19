@@ -35,6 +35,10 @@ DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
 
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.herokuapp.com']
 
+# URL base para chamadas de API internas (com fallback para localhost em desenvolvimento)
+# Em produção, define-se com a URL completa do serviço, como https://seu-app.herokuapp.com
+BASE_URL = os.environ.get('BASE_URL', 'http://127.0.0.1:8000')
+
 
 # Application definition
 

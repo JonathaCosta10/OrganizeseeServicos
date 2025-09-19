@@ -7,6 +7,7 @@ Usage: python manage.py inicializar_scheduler
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
+from django.conf import settings
 from rotinas_automaticas.models import (
     GrupoDiasExecucao, TipoRotina, StatusExecucao, 
     RotinaDefinicao, SchedulerRotina
@@ -129,7 +130,7 @@ class Command(BaseCommand):
                 'tipo_execucao': 'DIARIO',
                 'tipo_rotina': 'DOWNLOAD_ARQUIVO',
                 'horario_execucao': '08:00:00',
-                'endpoint_url': 'http://127.0.0.1:8000/api/download_cvm/',
+                'endpoint_url': f"{settings.BASE_URL}/api/download_cvm/",
                 'metodo_http': 'POST'
             },
             {
@@ -142,7 +143,7 @@ class Command(BaseCommand):
                 'tipo_execucao': 'DIARIO',
                 'tipo_rotina': 'DOWNLOAD_ARQUIVO',
                 'horario_execucao': '09:00:00',
-                'endpoint_url': 'http://127.0.0.1:8000/api/download_b3/',
+                'endpoint_url': f"{settings.BASE_URL}/api/download_b3/",
                 'metodo_http': 'POST'
             },
             {
@@ -155,7 +156,7 @@ class Command(BaseCommand):
                 'tipo_execucao': 'DIARIO',
                 'tipo_rotina': 'CARGA_ARQUIVO',
                 'horario_execucao': '10:00:00',
-                'endpoint_url': 'http://127.0.0.1:8000/api/static_arquivos/',
+                'endpoint_url': f"{settings.BASE_URL}/api/static_arquivos/",
                 'metodo_http': 'POST',
                 'payload_json': '{"acao": "Carga", "arquivo": "TradeInformationConsolidatedFile*.csv"}',
                 'mascara_arquivo': 'TradeInformationConsolidatedFile*.csv'
