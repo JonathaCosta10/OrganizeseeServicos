@@ -15,7 +15,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'servicos.settings')
 django.setup()
 
 # Importar após configurar o ambiente
-from rotinas_automaticas.models import SchedulerRotina
+from rotinas_automaticas.models import SchedulerRotina, FilaExecucao
 from django.conf import settings
 
 def corrigir_urls_rotinas():
@@ -37,8 +37,28 @@ def corrigir_urls_rotinas():
         if '127.0.0.1' in url_antiga or 'localhost' in url_antiga:
             # Extrair o caminho da URL (após o domínio e porta)
             try:
-                caminho = url_antiga.split('/', 3)[3]  # http://127.0.0.1:8000/api/download_b3/ -> api/download_b3/
-                nova_url = f"{settings.BASE_URL}/{caminho}"
+                # Mais robusto para lidar com diferentes formatos de URL
+                partes = url_antiga.split('/')
+                # Encontrar 'api' no caminho
+                api_index = -1
+                for i, parte in enumerate(partes):
+                    if parte == 'api':
+                        api_index = i
+                        break
+                
+                if api_index >= 0:
+                    # Reconstruir caminho a partir da parte 'api'
+                    caminho = '/'.join(partes[api_index:])
+                    nova_url = f"{settings.BASE_URL}/{caminho}"
+                else:
+                    # Fallback: tentar o método antigo
+                    try:
+                        caminho = url_antiga.split('/', 3)[3]
+                        nova_url = f"{settings.BASE_URL}/{caminho}"
+                    except:
+                        # Se falhar, usar a URL completa
+                        caminho = url_antiga.split('://', 1)[1].split('/', 1)[1]
+                        nova_url = f"{settings.BASE_URL}/{caminho}"
                 
                 print(f"Atualizando rotina: {nome_rotina}")
                 print(f"  URL Antiga: {url_antiga}")
@@ -52,6 +72,25 @@ def corrigir_urls_rotinas():
                 print(f"Erro ao processar URL {url_antiga}: {str(e)}")
         else:
             print(f"Rotina já está correta: {nome_rotina} - {url_antiga}")
+    
+    # Limpar itens pendentes com erro
+    print("\nLimpando itens da fila com erro de conexão...")
+    itens_erro = FilaExecucao.objects.filter(
+        erro_detalhes__contains='127.0.0.1',
+        status='ERRO'
+    )
+    
+    if itens_erro.exists():
+        count_erros = itens_erro.count()
+        itens_erro.delete()
+        print(f"Removidos {count_erros} itens da fila com erros de conexão")
+    else:
+        print("Nenhum item com erro de conexão encontrado")
+    
+    # Forçar update de todas as rotinas pendentes
+    print("\nAtualizando status de rotinas pendentes...")
+    FilaExecucao.objects.filter(status='EXECUTANDO').update(status='PENDENTE')
+    print(f"Agora existem {FilaExecucao.objects.filter(status='PENDENTE').count()} rotinas pendentes")
     
     print(f"\nResultado: {count_atualizadas} rotinas atualizadas de {rotinas.count()} total")
     
